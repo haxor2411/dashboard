@@ -4,29 +4,23 @@ import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { useSession } from "next-auth/react"; // Get session for email
-import { useSpring, animated } from "react-spring"; // For the timer animation
-import { Router } from "next/router";
+import { useSession } from "next-auth/react";
+import { useSpring, animated } from "react-spring";
 import { useRouter } from "next/navigation";
 
-
 export default function Recording() {
-
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null); // Use useRef for mediaRecorder
+  const streamRef = useRef<MediaStream | null>(null); // Use useRef for media stream
+  const timerRef = useRef<NodeJS.Timeout | null>(null); // Use useRef for the timer
   const [isRecording, setIsRecording] = useState(false);
-  const [mediaBlob, setMediaBlob] = useState<Blob | null>(null); // Store the media Blob
-  const [isUploading, setIsUploading] = useState(false); // Flag to handle upload state
-  const [isError, setIsError] = useState(false); // Handle errors
-  const [timer, setTimer] = useState(60); // Timer state for countdown
-  const { data: session } = useSession(); // Get session data (email ID)
+  const [mediaBlob, setMediaBlob] = useState<Blob | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isError, setIsError] = useState(false);
+  const [timer, setTimer] = useState(60);
+  const { data: session } = useSession();
 
-  let mediaRecorder: MediaRecorder | null = null;
-  let chunks: Blob[] = [];
-  let stream: MediaStream | null = null; // Store the media stream to stop tracks later
-  let timerInterval: NodeJS.Timeout | null = null; // Store the interval ID for the timer
-
-  // Start recording
   const startRecording = async () => {
     if (!session?.user?.email) {
       alert("User is not authenticated.");
@@ -34,65 +28,60 @@ export default function Recording() {
     }
 
     try {
-      // Request access to camera and microphone
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      streamRef.current = stream;
       videoRef.current!.srcObject = stream;
       videoRef.current!.play();
 
-      // Mute the user's own audio
-      const audioTracks = stream.getAudioTracks();
-      if (audioTracks[0]) {
-        audioTracks[0].enabled = false; // Mute the microphone
-      }
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      const chunks: Blob[] = [];
 
-      // Create a MediaRecorder instance
-      mediaRecorder = new MediaRecorder(stream);
       mediaRecorder.ondataavailable = (event) => {
-        chunks.push(event.data); // Collect the recorded chunks
+        chunks.push(event.data);
       };
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunks, { type: "video/webm" });
-        setMediaBlob(blob); // Set the captured media as Blob
-        chunks = []; // Clear the chunks array after stopping
+        setMediaBlob(blob);
       };
 
       mediaRecorder.start();
-      setIsRecording(true); // Set state to recording
+      setIsRecording(true);
 
-      // Start a 60-second timer
-      timerInterval = setInterval(() => {
+      timerRef.current = setInterval(() => {
         setTimer((prev) => {
           if (prev === 1) {
-            stopRecording(); // Stop recording when the timer reaches 0
-            clearInterval(timerInterval!); // Clear the interval
+            stopRecording(); // Stop recording when timer ends
+            clearInterval(timerRef.current!);
           }
           return prev - 1;
         });
-      }, 1000); // Update the timer every second
+      }, 1000);
     } catch (error) {
       alert("Error accessing media devices.");
     }
   };
 
-  // Stop recording (manual or auto stop)
   const stopRecording = () => {
-    if (mediaRecorder) {
-      mediaRecorder.stop(); // Stop the recording
-      setIsRecording(false); // Update state to stop recording
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
     }
 
-    if (stream) {
-      // Stop all media tracks (video and audio) to release resources
-      stream.getTracks().forEach(track => track.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
 
-    if (timerInterval) {
-      clearInterval(timerInterval); // Clear the timer if stopped manually
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
     }
   };
 
-  // Upload the recorded media to the backend
   const uploadRecording = async () => {
     if (!mediaBlob || !session?.user?.email) {
       alert("No media recorded to upload.");
@@ -101,9 +90,8 @@ export default function Recording() {
 
     setIsUploading(true);
 
-    // Create a form data object to send the video file to the server
     const formData = new FormData();
-    const fileName = `recording-${session.user.email}.webm`; // Save file under session email
+    const fileName = `recording-${session.user.email}.webm`;
     formData.append("video", mediaBlob, fileName);
 
     try {
@@ -119,13 +107,12 @@ export default function Recording() {
       alert("Upload successful!");
     } catch (error: any) {
       alert(`Error: ${error.message}`);
-      setIsError(true); // Set error state
+      setIsError(true);
     } finally {
       setIsUploading(false);
     }
   };
 
-  // Animation for the timer
   const timerAnimation = useSpring({
     width: `${(timer / 60) * 100}%`,
     config: { tension: 200, friction: 15 },
@@ -139,13 +126,14 @@ export default function Recording() {
         <Button onClick={startRecording} className="bg-green-500 text-white w-full mt-4">
           Start Recording
         </Button>
-      ) : (<>
-        <Button onClick={stopRecording} className="bg-red-500 text-white w-full mt-4">
-          Stop Recording
-        </Button>
-        <Button onClick={() => router.push("/completion")} className="bg-red-500 text-white w-full mt-4">
-          Submit
-        </Button>
+      ) : (
+        <>
+          <Button onClick={stopRecording} className="bg-red-500 text-white w-full mt-4">
+            Stop Recording
+          </Button>
+          <Button onClick={() => router.push("/completion")} className="bg-red-500 text-white w-full mt-4">
+            Submit
+          </Button>
         </>
       )}
       <div className="w-full max-w-lg mt-4">
