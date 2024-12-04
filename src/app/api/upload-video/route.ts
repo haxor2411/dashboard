@@ -1,6 +1,7 @@
+import { NextRequest, NextResponse } from "next/server";
 import formidable from "formidable";
-import { NextApiRequest } from "next";
-import { NextApiResponse } from "next";
+import { promises as fs } from "fs";
+import path from "path";
 
 export const config = {
   api: {
@@ -8,18 +9,36 @@ export const config = {
   },
 };
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const form = new formidable.IncomingForm();
+// Handle POST request
+export async function POST(req: NextRequest) {
+  const form = new formidable.IncomingForm({
+    uploadDir: path.join(process.cwd(), "public", "uploads"), // Specify upload directory
+    keepExtensions: true, // Preserve file extensions
+  });
 
+  // Ensure the upload directory exists
+  const uploadDir = path.join(process.cwd(), "public", "uploads");
   try {
-    form.parse(req, (err, fields, files) => {
+    await fs.mkdir(uploadDir, { recursive: true });
+  } catch {}
+
+  // Parse the incoming request
+  return new Promise((resolve, reject) => {
+    form.parse(req as any, (err, fields, files) => {
       if (err) {
-        res.status(500).json({ error: "Error parsing the form" });
+        reject(
+          NextResponse.json({ error: "Error parsing the form" }, { status: 500 })
+        );
         return;
       }
-      res.status(200).json({ fields, files });
+
+      resolve(
+        NextResponse.json({
+          message: "File uploaded successfully",
+          fields,
+          files,
+        })
+      );
     });
-  } catch (error) {
-    res.status(500).json({ error: "Something went wrong" });
-  }
+  });
 }
