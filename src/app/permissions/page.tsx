@@ -37,21 +37,26 @@ export default function Permissions() {
     }
   };
 
-  // Request screen sharing permission
+  // Request screen sharing permission (entire screen only)
   const startScreenShare = async () => {
     try {
+      // Request the user to share only the entire screen
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: {
+          displaySurface: 'monitor', // This restricts the user to share the entire screen only
+        },
       });
       setHasScreenShare(true);
+      
       // Optionally, you can display the shared screen in a video element
       const videoElement = document.createElement("video");
       videoElement.srcObject = stream;
       videoElement.play();
+
       // Optionally, stop screen sharing when the user navigates away
       stream.getTracks().forEach(track => track.onended = () => setHasScreenShare(false));
     } catch (err) {
-      alert("Screen sharing permission denied.");
+      alert("Screen sharing permission denied or invalid.");
     }
   };
 

@@ -1,46 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
-import formidable from "formidable";
-import { promises as fs } from "fs";
+import multer from "multer";
 import path from "path";
+import fs from "fs/promises";
+
+// Configure multer storage (to store files in a specific directory)
+const storage = multer.diskStorage({
+  destination: async (req, file, cb) => {
+    const uploadDir = path.join(process.cwd(), "public", "uploads");
+
+    // Ensure the upload directory exists
+    await fs.mkdir(uploadDir, { recursive: true });
+    cb(null, uploadDir); // Specify the directory to store files
+  },
+  filename: (req, file, cb) => {
+    cb(null, file.originalname); // Save file with its original name
+  }
+});
+
+const upload = multer({ storage });
 
 export const config = {
   api: {
-    bodyParser: false, // Disable Next.js body parsing
+    bodyParser: false, // Disable Next.js body parsing for file uploads
   },
 };
 
-// Handle POST request
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const form = new formidable.IncomingForm({
-    uploadDir: path.join(process.cwd(), "public", "uploads"), // Specify upload directory
-    keepExtensions: true, // Preserve file extensions
-  });
-
-  // Ensure the upload directory exists
-  const uploadDir = path.join(process.cwd(), "public", "uploads");
-  try {
-    await fs.mkdir(uploadDir, { recursive: true });
-  } catch {}
-
-  // Parse the incoming request
   return new Promise((resolve, reject) => {
-    form.parse(req as any, (err, fields, files) => {
+    // Use multer's `.single()` method for single file upload handling
+    upload.single("video")(req as any, (req as any).res, (err: any) => {
       if (err) {
-        resolve(
-          NextResponse.json(
-            { error: "Error parsing the form" },
+        return reject(
+          new NextResponse(
+            JSON.stringify({ error: "Error uploading file", details: err.message }),
             { status: 500 }
           )
         );
-        return;
       }
 
-      resolve(
-        NextResponse.json({
-          message: "File uploaded successfully",
-          fields,
-          files,
-        })
+      // File uploaded successfully
+      return resolve(
+        NextResponse.json({ message: "File uploaded successfully", file: (req as any).file }, { status: 200 })
       );
     });
   });
